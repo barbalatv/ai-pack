@@ -137,7 +137,41 @@ class BundleBuilder:
         return content
 
     def strip_comments(self, content: str, lang: str) -> str:
-        return content
+        """
+        Strip lines where the entire line content is a comment.
+
+        Inline comments and block comments are intentionally preserved.
+        """
+        hash_comment_langs = {"python", "bash", "yaml"}
+        slash_comment_langs = {
+            "javascript",
+            "typescript",
+            "jsx",
+            "tsx",
+            "rust",
+            "go",
+            "java",
+            "cpp",
+            "c",
+            "csharp",
+            "swift",
+            "kotlin",
+        }
+        keep_lines: list[str] = []
+        for line in content.splitlines():
+            stripped = line.lstrip()
+            if lang in hash_comment_langs and stripped.startswith("#"):
+                if stripped.startswith("#!") or self._is_semantic_hash_comment(stripped):
+                    keep_lines.append(line)
+                continue
+            if lang in slash_comment_langs and stripped.startswith("//"):
+                continue
+            keep_lines.append(line)
+
+        result = "\n".join(keep_lines)
+        if content.endswith("\n"):
+            result += "\n"
+        return result
 
     def build_plain(
         self,
@@ -415,6 +449,20 @@ class BundleBuilder:
             if stripped.startswith("`"):
                 longest = max(longest, len(stripped) - len(stripped.lstrip("`")))
         return "`" * max(3, longest + 1)
+
+    @staticmethod
+    def _is_semantic_hash_comment(stripped_line: str) -> bool:
+        lowered = stripped_line.lower()
+        semantic_prefixes = (
+            "# type:",
+            "# pyright:",
+            "# mypy:",
+            "# noqa",
+            "# pylint:",
+            "# ruff:",
+            "# pragma:",
+        )
+        return lowered.startswith(semantic_prefixes)
 
 
 def _estimate_tokens(text: str) -> int:
