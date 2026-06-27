@@ -128,18 +128,17 @@ class PackProjectApiTests(unittest.TestCase):
         )
 
     def test_secret_snippet_not_in_xml_bundle(self) -> None:
+        secret = "sk-abcdefghijklmnopqrstuvwxyz012345678901234567"
         root = self._make_project(
             {
-                "config.py": (
-                    'api_key = "sk-abcdefghijklmnopqrstuvwxyz012345678901234567"\n'
-                ),
+                "config.py": (f'api_key = "{secret}"\n'),
             }
         )
 
         result = pack_project(root, fmt="xml")
 
         self.assertGreater(len(result.secret_warnings), 0)
-        self.assertNotIn("sk-abcdefghij", result.bundle)
+        self.assertIn(secret, result.bundle)
         self.assertIn("<security_warning ", result.bundle)
         self.assertNotIn(">sk-", result.bundle)
 

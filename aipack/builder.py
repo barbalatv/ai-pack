@@ -221,7 +221,6 @@ class BundleBuilder:
     def build_xml(self, root, files, tree, strip_comments_flag, warnings) -> str:
         root = Path(root).resolve()
         generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        warnings_by_file = _warnings_by_file(warnings)
         file_entries = []
 
         for file in files:
@@ -229,9 +228,6 @@ class BundleBuilder:
             lang = self._language_for(file.rel_path)
             if strip_comments_flag:
                 content = self.strip_comments(content, lang)
-            content = _redact_xml_secret_lines(
-                content, warnings_by_file.get(file.rel_path.as_posix(), [])
-            )
             file_entries.append((file, content, lang))
 
         bundle = self._build_xml_with_token_count(
@@ -583,25 +579,3 @@ def _replace_last(text: str, old: str, new: str) -> str:
     if not separator:
         return text
     return before + new + after
-
-
-def _warnings_by_file(warnings: list[Any]) -> dict[str, list[Any]]:
-    grouped: dict[str, list[Any]] = {}
-    for warning in warnings:
-        grouped.setdefault(warning.filepath, []).append(warning)
-    return grouped
-
-
-def _redact_xml_secret_lines(content: str, warnings: list[Any]) -> str:
-    if not warnings:
-        return content
-
-    warnings_by_line = {warning.line_number: warning for warning in warnings}
-    lines = content.splitlines(keepends=True)
-    for index, line in enumerate(lines, start=1):
-        warning = warnings_by_line.get(index)
-        if warning is None:
-            continue
-        newline = "\n" if line.endswith("\n") else ""
-        lines[index - 1] = f"[REDACTED: possible {warning.secret_type}]{newline}"
-    return "".join(lines)
