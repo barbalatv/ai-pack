@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from html import escape
 from pathlib import Path
 from typing import Any
 
@@ -199,10 +200,68 @@ class BundleBuilder:
         )
 
     def build_xml(self, root, files, tree, strip_comments_flag, warnings) -> str:
-        raise NotImplementedError("XML format is not implemented yet")
+        root = Path(root).resolve()
+        files = self.sort_files(files)
+        generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        file_entries = []
+
+        for file in files:
+            content = self.read_file_content(file)
+            lang = self._language_for(file.rel_path)
+            if strip_comments_flag:
+                content = self.strip_comments(content, lang)
+            line_count = len(content.splitlines())
+            file_entries.append((file, content, lang, line_count))
+
+        bundle = self._build_xml_with_token_count(
+            root, files, tree, generated_at, file_entries, warnings, 0
+        )
+        token_count = _estimate_tokens(bundle)
+        bundle = self._build_xml_with_token_count(
+            root, files, tree, generated_at, file_entries, warnings, token_count
+        )
+        token_count = _estimate_tokens(bundle)
+        return self._build_xml_with_token_count(
+            root, files, tree, generated_at, file_entries, warnings, token_count
+        )
 
     def build_md(self, root, files, tree, strip_comments_flag, warnings) -> str:
-        raise NotImplementedError("Markdown format is not implemented yet")
+        root = Path(root).resolve()
+        files = self.sort_files(files)
+        generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        file_sections: list[str] = []
+
+        for file in files:
+            content = self.read_file_content(file)
+            lang = self._language_for(file.rel_path)
+            if strip_comments_flag:
+                content = self.strip_comments(content, lang)
+            line_count = len(content.splitlines())
+            fence = self._fence_for(content)
+            file_sections.append(
+                "\n".join(
+                    [
+                        f"## {file.rel_path.as_posix()}",
+                        f"*Size: {self._format_kb(file.size_bytes)} KB | Lines: {line_count} | Lang: {lang}*",
+                        f"{fence}{lang}",
+                        content.rstrip("\n"),
+                        fence,
+                        "",
+                    ]
+                )
+            )
+
+        bundle = self._build_md_with_token_count(
+            root, files, tree, generated_at, file_sections, warnings, 0
+        )
+        token_count = _estimate_tokens(bundle)
+        bundle = self._build_md_with_token_count(
+            root, files, tree, generated_at, file_sections, warnings, token_count
+        )
+        token_count = _estimate_tokens(bundle)
+        return self._build_md_with_token_count(
+            root, files, tree, generated_at, file_sections, warnings, token_count
+        )
 
     def split_into_chunks(
         self, bundle: str, chunk_size_tokens: int, output_base: str
@@ -239,6 +298,96 @@ class BundleBuilder:
         )
         return "\n".join(sections)
 
+    def _build_xml_with_token_count(
+        self,
+        root: Path,
+        files: list[ScannedFile],
+        tree: str,
+        generated_at: str,
+        file_entries: list[tuple[ScannedFile, str, str, int]],
+        warnings: list[Any],
+        token_count: int,
+    ) -> str:
+        lines = [
+            (
+                f'<project_bundle name="{escape(root.name, quote=True)}" '
+                f'root="{escape(str(root), quote=True)}" '
+                f'generated_at="{escape(generated_at, quote=True)}" '
+                f'files="{len(files)}" estimated_tokens="{token_count}">'
+            )
+        ]
+        if tree:
+            lines.extend(
+                [
+                    "  <project_structure>",
+                    escape(tree),
+                    "  </project_structure>",
+                ]
+            )
+        if warnings:
+            lines.append("  <security_warnings>")
+            for warning in warnings:
+                lines.append(
+                    (
+                        f'    <security_warning path="{escape(warning.filepath, quote=True)}" '
+                        f'line="{warning.line_number}" '
+                        f'type="{escape(warning.secret_type, quote=True)}">'
+                        f"{escape(warning.snippet)}</security_warning>"
+                    )
+                )
+            lines.append("  </security_warnings>")
+        for file, content, lang, line_count in file_entries:
+            lines.extend(
+                [
+                    (
+                        f'  <file path="{escape(file.rel_path.as_posix(), quote=True)}" '
+                        f'size_kb="{self._format_kb(file.size_bytes)}" '
+                        f'lines="{line_count}" lang="{escape(lang, quote=True)}">'
+                    ),
+                    "    <content>",
+                    escape(content.rstrip("\n")),
+                    "    </content>",
+                    "  </file>",
+                ]
+            )
+        lines.append("</project_bundle>")
+        lines.append("")
+        return "\n".join(lines)
+
+    def _build_md_with_token_count(
+        self,
+        root: Path,
+        files: list[ScannedFile],
+        tree: str,
+        generated_at: str,
+        file_sections: list[str],
+        warnings: list[Any],
+        token_count: int,
+    ) -> str:
+        sections = [
+            f"# Project Bundle: {root.name}",
+            f"> Generated: {generated_at} | Root: `{root}` | Files: {len(files)} | {_format_token_count(token_count)} tokens",
+            "",
+        ]
+        if tree:
+            sections.extend(["## Project Structure", "```", tree, "```", ""])
+        if warnings:
+            sections.append("## Security Warnings")
+            for warning in warnings:
+                sections.append(
+                    f"- `{warning.filepath}` line {warning.line_number}: possible {warning.secret_type} detected"
+                )
+            sections.append("")
+        sections.extend(file_sections)
+        sections.extend(
+            [
+                "---",
+                f"End of bundle: {len(files)} files | {_format_token_count(token_count)} tokens",
+                "",
+            ]
+        )
+        return "\n".join(sections)
+
     def _priority(self, path: Path) -> int:
         rel = path.as_posix()
         name = path.name
@@ -257,6 +406,15 @@ class BundleBuilder:
     @staticmethod
     def _format_kb(size_bytes: int) -> str:
         return f"{size_bytes / 1024:.1f}"
+
+    @staticmethod
+    def _fence_for(content: str) -> str:
+        longest = 0
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("`"):
+                longest = max(longest, len(stripped) - len(stripped.lstrip("`")))
+        return "`" * max(3, longest + 1)
 
 
 def _estimate_tokens(text: str) -> int:
