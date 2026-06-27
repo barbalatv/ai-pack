@@ -9,6 +9,8 @@ from typing import Any
 from .scanner import ScannedFile
 
 
+TOKEN_COUNT_PLACEHOLDER = "__TOKEN_COUNT__"
+
 LANG_MAP = {
     ".py": "python",
     ".js": "javascript",
@@ -213,26 +215,9 @@ class BundleBuilder:
             tree=tree,
             generated_at=generated_at,
             file_sections=file_sections,
-            token_count=0,
+            token_count=TOKEN_COUNT_PLACEHOLDER,
         )
-        token_count = _estimate_tokens(bundle)
-        bundle = self._build_plain_with_token_count(
-            root=root,
-            files=files,
-            tree=tree,
-            generated_at=generated_at,
-            file_sections=file_sections,
-            token_count=token_count,
-        )
-        token_count = _estimate_tokens(bundle)
-        return self._build_plain_with_token_count(
-            root=root,
-            files=files,
-            tree=tree,
-            generated_at=generated_at,
-            file_sections=file_sections,
-            token_count=token_count,
-        )
+        return _replace_token_placeholder(bundle)
 
     def build_xml(self, root, files, tree, strip_comments_flag, warnings) -> str:
         root = Path(root).resolve()
@@ -249,16 +234,15 @@ class BundleBuilder:
             file_entries.append((file, content, lang, line_count))
 
         bundle = self._build_xml_with_token_count(
-            root, files, tree, generated_at, file_entries, warnings, 0
+            root,
+            files,
+            tree,
+            generated_at,
+            file_entries,
+            warnings,
+            TOKEN_COUNT_PLACEHOLDER,
         )
-        token_count = _estimate_tokens(bundle)
-        bundle = self._build_xml_with_token_count(
-            root, files, tree, generated_at, file_entries, warnings, token_count
-        )
-        token_count = _estimate_tokens(bundle)
-        return self._build_xml_with_token_count(
-            root, files, tree, generated_at, file_entries, warnings, token_count
-        )
+        return _replace_token_placeholder(bundle)
 
     def build_md(self, root, files, tree, strip_comments_flag, warnings) -> str:
         root = Path(root).resolve()
@@ -287,16 +271,15 @@ class BundleBuilder:
             )
 
         bundle = self._build_md_with_token_count(
-            root, files, tree, generated_at, file_sections, warnings, 0
+            root,
+            files,
+            tree,
+            generated_at,
+            file_sections,
+            warnings,
+            TOKEN_COUNT_PLACEHOLDER,
         )
-        token_count = _estimate_tokens(bundle)
-        bundle = self._build_md_with_token_count(
-            root, files, tree, generated_at, file_sections, warnings, token_count
-        )
-        token_count = _estimate_tokens(bundle)
-        return self._build_md_with_token_count(
-            root, files, tree, generated_at, file_sections, warnings, token_count
-        )
+        return _replace_token_placeholder(bundle)
 
     def split_into_chunks(
         self, bundle: str, chunk_size_tokens: int, output_base: str
@@ -349,13 +332,13 @@ class BundleBuilder:
         tree: str,
         generated_at: str,
         file_sections: list[str],
-        token_count: int,
+        token_count: str,
     ) -> str:
         sections = [
             "=" * 64,
             f"PROJECT BUNDLE: {root.name}",
             f"Generated: {generated_at} | Root: {root}",
-            f"Files: {len(files)} | Estimated tokens: {_format_token_count(token_count)} (cl100k_base)",
+            f"Files: {len(files)} | Estimated tokens: {token_count} (cl100k_base)",
             "=" * 64,
             "",
         ]
@@ -365,7 +348,7 @@ class BundleBuilder:
         sections.extend(
             [
                 "=" * 64,
-                f"END OF BUNDLE | {len(files)} files | {_format_token_count(token_count)} tokens",
+                f"END OF BUNDLE | {len(files)} files | {token_count} tokens",
                 "=" * 64,
                 "",
             ]
@@ -419,7 +402,7 @@ class BundleBuilder:
         generated_at: str,
         file_entries: list[tuple[ScannedFile, str, str, int]],
         warnings: list[Any],
-        token_count: int,
+        token_count: str,
     ) -> str:
         lines = [
             (
@@ -475,11 +458,11 @@ class BundleBuilder:
         generated_at: str,
         file_sections: list[str],
         warnings: list[Any],
-        token_count: int,
+        token_count: str,
     ) -> str:
         sections = [
             f"# Project Bundle: {root.name}",
-            f"> Generated: {generated_at} | Root: `{root}` | Files: {len(files)} | {_format_token_count(token_count)} tokens",
+            f"> Generated: {generated_at} | Root: `{root}` | Files: {len(files)} | {token_count} tokens",
             "",
         ]
         if tree:
@@ -495,7 +478,7 @@ class BundleBuilder:
         sections.extend(
             [
                 "---",
-                f"End of bundle: {len(files)} files | {_format_token_count(token_count)} tokens",
+                f"End of bundle: {len(files)} files | {token_count} tokens",
                 "",
             ]
         )
@@ -560,3 +543,8 @@ def _format_token_count(n: int) -> str:
         return format_token_count(n)
     except Exception:
         return f"~{n:,}"
+
+
+def _replace_token_placeholder(bundle: str) -> str:
+    token_count = _estimate_tokens(bundle)
+    return bundle.replace(TOKEN_COUNT_PLACEHOLDER, _format_token_count(token_count))

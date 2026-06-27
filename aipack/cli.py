@@ -135,6 +135,9 @@ def pack(
     _emit_warnings(scanner.stats.warnings + builder.warnings)
     _emit_secret_warnings(secret_warnings)
 
+    if chunk_size is not None and fmt != "plain":
+        raise click.ClickException("--chunk-size is only supported with --format plain")
+
     if chunk_size is not None:
         if not output:
             raise click.ClickException("--chunk-size requires --output as the chunk filename base")
