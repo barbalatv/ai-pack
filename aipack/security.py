@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .builder import BundleBuilder
+    from .scanner import ScannedFile
 
 
 @dataclass
@@ -59,6 +64,24 @@ def scan_for_secrets(content: str, filepath: str) -> list[SecretWarning]:
                 )
             )
     return warnings
+
+
+def scan_files_for_secrets(
+    builder: "BundleBuilder", files: list["ScannedFile"]
+) -> list[SecretWarning]:
+    """Scan included file contents for secrets and annotate file metadata."""
+    all_secret_warnings: list[SecretWarning] = []
+    for file in files:
+        content = builder.read_file_content(file)
+        found = scan_for_secrets(content, file.rel_path.as_posix())
+        if found:
+            file.security_risk = True
+            file.security_warnings.extend(
+                f"line {warning.line_number}: possible {warning.secret_type}"
+                for warning in found
+            )
+            all_secret_warnings.extend(found)
+    return all_secret_warnings
 
 
 def _redact_snippet(line: str, match: re.Match[str]) -> str:

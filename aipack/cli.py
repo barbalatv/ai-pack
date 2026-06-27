@@ -4,11 +4,10 @@ from pathlib import Path
 
 import click
 
-from .api import _scan_file_contents
 from .builder import BundleBuilder
 from .counter import estimate_tokens, format_token_count
 from .scanner import FileScanner
-from .security import SecretWarning
+from .security import SecretWarning, scan_files_for_secrets
 from .tree import generate_tree
 
 
@@ -110,7 +109,7 @@ def pack(
     builder = BundleBuilder()
     files = builder.sort_files(files)
     tree = "" if no_tree else generate_tree(root, [file.abs_path for file in files])
-    secret_warnings = _scan_file_contents(builder, files)
+    secret_warnings = scan_files_for_secrets(builder, files)
 
     if fmt == "plain":
         bundle = builder.build_plain(root, files, tree, strip_comments, secret_warnings)

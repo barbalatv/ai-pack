@@ -18,7 +18,7 @@ from pathlib import Path
 from .builder import BundleBuilder
 from .counter import estimate_tokens
 from .scanner import FileScanner
-from .security import SecretWarning, scan_for_secrets
+from .security import scan_files_for_secrets
 from .tree import generate_tree
 
 
@@ -82,7 +82,7 @@ def pack_project(
     files = builder.sort_files(files)
     tree = "" if no_tree else generate_tree(root, [file.abs_path for file in files])
 
-    all_secret_warnings = _scan_file_contents(builder, files)
+    all_secret_warnings = scan_files_for_secrets(builder, files)
 
     if fmt == "xml":
         bundle = builder.build_xml(root, files, tree, strip_comments, all_secret_warnings)
@@ -118,20 +118,3 @@ def pack_project(
             "filtered_diff": scan_stats.filtered_diff,
         },
     )
-
-
-def _scan_file_contents(
-    builder: BundleBuilder, files
-) -> list[SecretWarning]:
-    all_secret_warnings: list[SecretWarning] = []
-    for file in files:
-        content = builder.read_file_content(file)
-        found = scan_for_secrets(content, file.rel_path.as_posix())
-        if found:
-            file.security_risk = True
-            file.security_warnings.extend(
-                f"line {warning.line_number}: possible {warning.secret_type}"
-                for warning in found
-            )
-            all_secret_warnings.extend(found)
-    return all_secret_warnings
