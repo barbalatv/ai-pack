@@ -121,16 +121,19 @@ def pack(
             f"Bundle exceeds --max-tokens: {format_token_count(token_count)} > {format_token_count(max_tokens)}"
         )
 
+    if stats:
+        _print_stats(
+            scanner=scanner,
+            files_in_bundle=len(files),
+            bundle_size=len(bundle.encode("utf-8")),
+            token_count=token_count,
+        )
+        _emit_warnings(scanner.stats.warnings + builder.warnings)
+        _emit_secret_warnings(secret_warnings)
+        return
+
     _emit_warnings(scanner.stats.warnings + builder.warnings)
     _emit_secret_warnings(secret_warnings)
-
-    if stats:
-        click.echo(
-            f"Files in bundle: {len(files)} | Bundle size: {len(bundle.encode('utf-8'))} bytes | "
-            f"Estimated tokens: {format_token_count(token_count)}",
-            err=True,
-        )
-        return
 
     if chunk_size is not None:
         raise click.ClickException("--chunk-size is not implemented yet")
@@ -147,6 +150,55 @@ def pack(
 def _emit_warnings(warnings: list[str]) -> None:
     for warning in warnings:
         click.echo(f"WARNING: {warning}", err=True)
+
+
+def _print_stats(
+    scanner: FileScanner,
+    files_in_bundle: int,
+    bundle_size: int,
+    token_count: int,
+) -> None:
+    rows = [
+        ("Total files found", str(scanner.stats.total_files_found)),
+        ("Filtered (hardcoded rules)", str(scanner.stats.filtered_hardcoded)),
+        ("Filtered (.gitignore)", str(scanner.stats.filtered_gitignore)),
+        ("Filtered (size > max)", str(scanner.stats.filtered_size)),
+        (
+            "Filtered (security blacklist)",
+            str(scanner.stats.filtered_security_blacklist),
+        ),
+        ("Filtered (user excludes)", str(scanner.stats.filtered_user_exclude)),
+        ("Filtered (include-only)", str(scanner.stats.filtered_user_include)),
+        ("Filtered (binary)", str(scanner.stats.filtered_binary)),
+        ("Filtered (diff)", str(scanner.stats.filtered_diff)),
+        ("Files in bundle", f"{files_in_bundle} OK"),
+        ("Bundle size", _format_bytes(bundle_size)),
+        ("Estimated tokens (cl100k_base)", format_token_count(token_count)),
+    ]
+
+    try:
+        from rich.console import Console
+        from rich.table import Table
+
+        console = Console(stderr=True)
+        table = Table(title="ai-pack - Bundle Preview")
+        table.add_column("Metric")
+        table.add_column("Value", justify="right")
+        for metric, value in rows:
+            table.add_row(metric, value)
+        console.print(table)
+    except ImportError:
+        click.echo("ai-pack - Bundle Preview", err=True)
+        for metric, value in rows:
+            click.echo(f"{metric}: {value}", err=True)
+
+
+def _format_bytes(size: int) -> str:
+    if size >= 1024**2:
+        return f"{size / 1024**2:.1f} MB"
+    if size >= 1024:
+        return f"{size / 1024:.1f} KB"
+    return f"{size} B"
 
 
 def _scan_file_contents(builder: BundleBuilder, files) -> list[SecretWarning]:
