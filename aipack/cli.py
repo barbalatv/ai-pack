@@ -136,7 +136,18 @@ def pack(
     _emit_secret_warnings(secret_warnings)
 
     if chunk_size is not None:
-        raise click.ClickException("--chunk-size is not implemented yet")
+        if not output:
+            raise click.ClickException("--chunk-size requires --output as the chunk filename base")
+        try:
+            chunks = builder.split_into_chunks(bundle, chunk_size, output)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+        for filename, content in chunks:
+            chunk_path = Path(filename)
+            chunk_path.parent.mkdir(parents=True, exist_ok=True)
+            chunk_path.write_text(content, encoding="utf-8")
+        click.echo(f"Wrote {len(chunks)} chunks using base {output}", err=True)
+        return
 
     if output:
         output_path = Path(output)

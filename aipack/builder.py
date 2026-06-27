@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
+import re
 from typing import Any
 
 from .scanner import ScannedFile
@@ -300,7 +301,46 @@ class BundleBuilder:
     def split_into_chunks(
         self, bundle: str, chunk_size_tokens: int, output_base: str
     ) -> list[tuple[str, str]]:
-        raise NotImplementedError("Chunking is not implemented yet")
+        """
+        Split a plain-text bundle into chunks without cutting file sections.
+        """
+        if chunk_size_tokens <= 0:
+            raise ValueError("chunk_size_tokens must be greater than zero")
+
+        preamble, file_sections = self._split_plain_file_sections(bundle)
+        if not file_sections:
+            return [(self._chunk_filename(output_base, 1), bundle)]
+
+        chunk_sections: list[list[str]] = []
+        current: list[str] = []
+
+        for section in file_sections:
+            candidate = current + [section]
+            candidate_text = self._render_chunk(1, 1, preamble, candidate)
+            if current and _estimate_tokens(candidate_text) > chunk_size_tokens:
+                chunk_sections.append(current)
+                current = [section]
+            else:
+                current = candidate
+
+            single_text = self._render_chunk(1, 1, preamble, current)
+            if len(current) == 1 and _estimate_tokens(single_text) > chunk_size_tokens:
+                raise ValueError(
+                    "A single file section exceeds the requested chunk size; "
+                    "increase --chunk-size or lower --max-size."
+                )
+
+        if current:
+            chunk_sections.append(current)
+
+        total = len(chunk_sections)
+        return [
+            (
+                self._chunk_filename(output_base, index),
+                self._render_chunk(index, total, preamble, sections),
+            )
+            for index, sections in enumerate(chunk_sections, start=1)
+        ]
 
     def _build_plain_with_token_count(
         self,
@@ -331,6 +371,45 @@ class BundleBuilder:
             ]
         )
         return "\n".join(sections)
+
+    def _split_plain_file_sections(self, bundle: str) -> tuple[str, list[str]]:
+        pattern = re.compile(
+            r"(?ms)^={64}\nFILE: .*?(?=^={64}\n(?:FILE: |END OF BUNDLE))"
+        )
+        matches = list(pattern.finditer(bundle))
+        if not matches:
+            return bundle, []
+        preamble = bundle[: matches[0].start()].rstrip() + "\n\n"
+        return preamble, [match.group(0).rstrip() + "\n" for match in matches]
+
+    def _render_chunk(
+        self, index: int, total: int, preamble: str, file_sections: list[str]
+    ) -> str:
+        body = "\n".join(section.rstrip() for section in file_sections)
+        chunk = "\n".join(
+            [
+                "=" * 64,
+                f"CHUNK {index} of {total}",
+                "=" * 64,
+                "",
+                preamble.rstrip(),
+                "",
+                body.rstrip(),
+                "",
+                "=" * 64,
+                f"END OF CHUNK {index} of {total} | {_format_token_count(_estimate_tokens(body))} body tokens",
+                "=" * 64,
+                "",
+            ]
+        )
+        return chunk
+
+    @staticmethod
+    def _chunk_filename(output_base: str, index: int) -> str:
+        base = Path(output_base)
+        suffix = base.suffix or ".txt"
+        stem = base.stem if base.suffix else base.name
+        return str(base.with_name(f"{stem}.part{index:03d}{suffix}"))
 
     def _build_xml_with_token_count(
         self,
