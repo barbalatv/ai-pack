@@ -35,7 +35,7 @@ class FileScannerTests(unittest.TestCase):
             scanner = FileScanner(root, ["notes.md"], [], "20b", None)
             files = scanner.scan()
 
-            self.assertEqual(self._rel_paths(files), ["included.py"])
+            self.assertEqual(self._rel_paths(files), [".gitignore", "included.py"])
             self.assertEqual(scanner.stats.filtered_gitignore, 1)
             self.assertEqual(scanner.stats.filtered_user_exclude, 1)
             self.assertEqual(scanner.stats.filtered_size, 1)

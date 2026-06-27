@@ -49,7 +49,7 @@ class _SimplePathSpec:
         ]
 
     def match_file(self, path: str) -> bool:
-        path = path.replace("\\", "/").lstrip("./")
+        path = FileScanner._strip_dot_slash(path.replace("\\", "/"))
         name = path.rsplit("/", 1)[-1]
         for pattern in self.patterns:
             negated = pattern.startswith("!")
@@ -404,19 +404,22 @@ class FileScanner:
 
     @classmethod
     def _matches_patterns(cls, rel_path: str, patterns: Iterable[str]) -> bool:
-        rel_path = rel_path.replace("\\", "/").lstrip("./")
+        rel_path = cls._strip_dot_slash(rel_path.replace("\\", "/"))
         name = rel_path.rstrip("/").rsplit("/", 1)[-1]
         return any(cls._match_one(rel_path, name, pattern) for pattern in patterns)
 
     @staticmethod
     def _match_one(rel_path: str, name: str, pattern: str) -> bool:
         pattern = FileScanner._normalize_pattern(pattern)
-        rel_path = rel_path.replace("\\", "/").lstrip("./")
+        rel_path = FileScanner._strip_dot_slash(rel_path.replace("\\", "/"))
         name = name.rstrip("/")
 
         if pattern.endswith("/"):
             directory = pattern.rstrip("/")
-            return rel_path.rstrip("/") == directory or rel_path.startswith(f"{directory}/")
+            is_directory_path = rel_path.endswith("/")
+            return (is_directory_path and rel_path.rstrip("/") == directory) or rel_path.startswith(
+                f"{directory}/"
+            )
 
         if "/" not in pattern and fnmatch.fnmatch(name, pattern):
             return True
@@ -430,6 +433,12 @@ class FileScanner:
     @staticmethod
     def _normalize_pattern(pattern: str) -> str:
         return pattern.replace("\\", "/").strip()
+
+    @staticmethod
+    def _strip_dot_slash(path: str) -> str:
+        while path.startswith("./"):
+            path = path[2:]
+        return path
 
     def _display_path(self, path: Path) -> str:
         try:
