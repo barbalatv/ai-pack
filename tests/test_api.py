@@ -92,6 +92,49 @@ class PackProjectApiTests(unittest.TestCase):
 
         self.assertNotIn("PROJECT STRUCTURE", result.bundle)
 
+    def test_token_placeholder_text_is_preserved_in_file_content(self) -> None:
+        source = "\n".join(
+            [
+                'TOKEN_COUNT_PLACEHOLDER = "__TOKEN_COUNT__"',
+                "Estimated tokens: __TOKEN_COUNT__ (cl100k_base)",
+                'body = " | __TOKEN_COUNT__ tokens"',
+                'xml_attr = "estimated_tokens=\\"__TOKEN_COUNT__\\""',
+                "",
+            ]
+        )
+        root = self._make_project({"main.py": source})
+
+        plain = pack_project(root, fmt="plain")
+        markdown = pack_project(root, fmt="md")
+        xml = pack_project(root, fmt="xml")
+
+        self.assertIn('TOKEN_COUNT_PLACEHOLDER = "__TOKEN_COUNT__"', plain.bundle)
+        self.assertIn("Estimated tokens: __TOKEN_COUNT__ (cl100k_base)", plain.bundle)
+        self.assertIn('body = " | __TOKEN_COUNT__ tokens"', plain.bundle)
+        self.assertNotIn(
+            "END OF BUNDLE | 1 files | __TOKEN_COUNT__ tokens", plain.bundle
+        )
+
+        self.assertIn('TOKEN_COUNT_PLACEHOLDER = "__TOKEN_COUNT__"', markdown.bundle)
+        self.assertIn("Estimated tokens: __TOKEN_COUNT__ (cl100k_base)", markdown.bundle)
+        self.assertIn('body = " | __TOKEN_COUNT__ tokens"', markdown.bundle)
+        self.assertNotIn(
+            "End of bundle: 1 files | __TOKEN_COUNT__ tokens", markdown.bundle
+        )
+
+        self.assertIn(
+            "TOKEN_COUNT_PLACEHOLDER = &quot;__TOKEN_COUNT__&quot;", xml.bundle
+        )
+        self.assertIn(
+            "Estimated tokens: __TOKEN_COUNT__ (cl100k_base)", xml.bundle
+        )
+        self.assertIn("body = &quot; | __TOKEN_COUNT__ tokens&quot;", xml.bundle)
+        self.assertIn(
+            "xml_attr = &quot;estimated_tokens=\\&quot;__TOKEN_COUNT__\\&quot;&quot;",
+            xml.bundle,
+        )
+        self.assertNotIn('estimated_tokens="__TOKEN_COUNT__"', xml.bundle)
+
     def _make_project(self, files: dict[str, str]) -> Path:
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)

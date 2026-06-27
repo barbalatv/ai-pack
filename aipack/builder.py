@@ -217,7 +217,7 @@ class BundleBuilder:
             file_sections=file_sections,
             token_count=TOKEN_COUNT_PLACEHOLDER,
         )
-        return _replace_token_placeholder(bundle)
+        return _replace_plain_token_placeholder(bundle)
 
     def build_xml(self, root, files, tree, strip_comments_flag, warnings) -> str:
         root = Path(root).resolve()
@@ -242,7 +242,7 @@ class BundleBuilder:
             warnings,
             TOKEN_COUNT_PLACEHOLDER,
         )
-        return _replace_token_placeholder(bundle)
+        return _replace_xml_token_placeholder(bundle)
 
     def build_md(self, root, files, tree, strip_comments_flag, warnings) -> str:
         root = Path(root).resolve()
@@ -279,7 +279,7 @@ class BundleBuilder:
             warnings,
             TOKEN_COUNT_PLACEHOLDER,
         )
-        return _replace_token_placeholder(bundle)
+        return _replace_md_token_placeholder(bundle)
 
     def split_into_chunks(
         self, bundle: str, chunk_size_tokens: int, output_base: str
@@ -545,6 +545,47 @@ def _format_token_count(n: int) -> str:
         return f"~{n:,}"
 
 
-def _replace_token_placeholder(bundle: str) -> str:
+def _replace_xml_token_placeholder(bundle: str) -> str:
     token_count = _estimate_tokens(bundle)
-    return bundle.replace(TOKEN_COUNT_PLACEHOLDER, _format_token_count(token_count))
+    return bundle.replace(
+        f'estimated_tokens="{TOKEN_COUNT_PLACEHOLDER}"',
+        f'estimated_tokens="{_format_token_count(token_count)}"',
+        1,
+    )
+
+
+def _replace_plain_token_placeholder(bundle: str) -> str:
+    token_count = _estimate_tokens(bundle)
+    formatted = _format_token_count(token_count)
+    bundle = bundle.replace(
+        f"Estimated tokens: {TOKEN_COUNT_PLACEHOLDER} (cl100k_base)",
+        f"Estimated tokens: {formatted} (cl100k_base)",
+        1,
+    )
+    return _replace_last(
+        bundle,
+        f" | {TOKEN_COUNT_PLACEHOLDER} tokens",
+        f" | {formatted} tokens",
+    )
+
+
+def _replace_md_token_placeholder(bundle: str) -> str:
+    token_count = _estimate_tokens(bundle)
+    formatted = _format_token_count(token_count)
+    bundle = bundle.replace(
+        f" | {TOKEN_COUNT_PLACEHOLDER} tokens",
+        f" | {formatted} tokens",
+        1,
+    )
+    return _replace_last(
+        bundle,
+        f" | {TOKEN_COUNT_PLACEHOLDER} tokens",
+        f" | {formatted} tokens",
+    )
+
+
+def _replace_last(text: str, old: str, new: str) -> str:
+    before, separator, after = text.rpartition(old)
+    if not separator:
+        return text
+    return before + new + after

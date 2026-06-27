@@ -4,10 +4,11 @@ from pathlib import Path
 
 import click
 
+from .api import _scan_file_contents
 from .builder import BundleBuilder
 from .counter import estimate_tokens, format_token_count
 from .scanner import FileScanner
-from .security import SecretWarning, scan_for_secrets
+from .security import SecretWarning
 from .tree import generate_tree
 
 
@@ -94,6 +95,9 @@ def pack(
 
     PATH is the root directory to scan (default: current directory).
     """
+    if chunk_size is not None and fmt != "plain":
+        raise click.ClickException("--chunk-size is only supported with --format plain")
+
     root = Path(path).resolve()
     scanner = FileScanner(
         root=root,
@@ -134,9 +138,6 @@ def pack(
 
     _emit_warnings(scanner.stats.warnings + builder.warnings)
     _emit_secret_warnings(secret_warnings)
-
-    if chunk_size is not None and fmt != "plain":
-        raise click.ClickException("--chunk-size is only supported with --format plain")
 
     if chunk_size is not None:
         if not output:
@@ -213,21 +214,6 @@ def _format_bytes(size: int) -> str:
     if size >= 1024:
         return f"{size / 1024:.1f} KB"
     return f"{size} B"
-
-
-def _scan_file_contents(builder: BundleBuilder, files) -> list[SecretWarning]:
-    warnings: list[SecretWarning] = []
-    for file in files:
-        content = builder.read_file_content(file)
-        found = scan_for_secrets(content, file.rel_path.as_posix())
-        if found:
-            file.security_risk = True
-            file.security_warnings.extend(
-                f"line {warning.line_number}: possible {warning.secret_type}"
-                for warning in found
-            )
-            warnings.extend(found)
-    return warnings
 
 
 def _emit_secret_warnings(warnings: list[SecretWarning]) -> None:
