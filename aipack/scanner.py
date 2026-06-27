@@ -255,7 +255,32 @@ class FileScanner:
 
     def _get_diff_files(self, diff_ref: str) -> set[Path]:
         """Run `git diff --name-only <ref>` and return absolute paths."""
-        return set()
+        try:
+            result = subprocess.run(
+                ["git", "diff", "--name-only", diff_ref],
+                cwd=self.root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            self.stats.warnings.append(f"[git] Could not run git diff: {exc}")
+            return set()
+
+        if result.returncode != 0:
+            message = result.stderr.strip() or result.stdout.strip()
+            self.stats.warnings.append(
+                f"[git] git diff --name-only {diff_ref} failed: {message}"
+            )
+            return set()
+
+        paths = set()
+        for line in result.stdout.splitlines():
+            rel = line.strip()
+            if not rel:
+                continue
+            paths.add((self.root / rel).resolve())
+        return paths
 
     def scan(self) -> list[ScannedFile]:
         """
@@ -264,7 +289,7 @@ class FileScanner:
         Uses os.walk(followlinks=False) to avoid symlink loops.
         """
         included: list[ScannedFile] = []
-        diff_files: set[Path] | None = None
+        diff_files = self._get_diff_files(self.diff_ref) if self.diff_ref else None
 
         for current_dir, dirnames, filenames in os.walk(self.root, followlinks=False):
             current_path = Path(current_dir)
