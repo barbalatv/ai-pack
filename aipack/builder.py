@@ -67,6 +67,7 @@ PRIORITY_PATTERNS = [
 class BundleBuilder:
     def __init__(self) -> None:
         self.warnings: list[str] = []
+        self._content_cache: dict[Path, str] = {}
 
     def sort_files(self, files: list[ScannedFile]) -> list[ScannedFile]:
         """Sort by priority, then path depth, then alphabetically."""
@@ -86,8 +87,14 @@ class BundleBuilder:
         Try UTF-8 first, then chardet, then open with errors='replace'.
         Never raise on encoding errors.
         """
+        cache_key = file.abs_path.resolve()
+        if cache_key in self._content_cache:
+            return self._content_cache[cache_key]
+
         try:
-            return file.abs_path.read_text(encoding="utf-8")
+            content = file.abs_path.read_text(encoding="utf-8")
+            self._content_cache[cache_key] = content
+            return content
         except UnicodeDecodeError:
             pass
         except OSError as exc:
@@ -115,14 +122,18 @@ class BundleBuilder:
                 self.warnings.append(
                     f"[read] Used encoding fallback for {file.rel_path.as_posix()}: {encoding}"
                 )
-                return raw.decode(encoding)
+                content = raw.decode(encoding)
+                self._content_cache[cache_key] = content
+                return content
             except (LookupError, UnicodeDecodeError):
                 pass
 
         self.warnings.append(
             f"[read] Used replacement decoding for {file.rel_path.as_posix()}"
         )
-        return raw.decode("utf-8", errors="replace")
+        content = raw.decode("utf-8", errors="replace")
+        self._content_cache[cache_key] = content
+        return content
 
     def strip_comments(self, content: str, lang: str) -> str:
         return content

@@ -7,6 +7,7 @@ import click
 from .builder import BundleBuilder
 from .counter import estimate_tokens, format_token_count
 from .scanner import FileScanner
+from .security import SecretWarning, scan_for_secrets
 from .tree import generate_tree
 
 
@@ -105,13 +106,14 @@ def pack(
     builder = BundleBuilder()
     files = builder.sort_files(files)
     tree = "" if no_tree else generate_tree(root, [file.abs_path for file in files])
+    secret_warnings = _scan_file_contents(builder, files)
 
     if fmt == "plain":
-        bundle = builder.build_plain(root, files, tree, strip_comments, [])
+        bundle = builder.build_plain(root, files, tree, strip_comments, secret_warnings)
     elif fmt == "xml":
-        bundle = builder.build_xml(root, files, tree, strip_comments, [])
+        bundle = builder.build_xml(root, files, tree, strip_comments, secret_warnings)
     else:
-        bundle = builder.build_md(root, files, tree, strip_comments, [])
+        bundle = builder.build_md(root, files, tree, strip_comments, secret_warnings)
 
     token_count = estimate_tokens(bundle)
     if max_tokens is not None and token_count > max_tokens:
@@ -120,6 +122,7 @@ def pack(
         )
 
     _emit_warnings(scanner.stats.warnings + builder.warnings)
+    _emit_secret_warnings(secret_warnings)
 
     if stats:
         click.echo(
@@ -144,6 +147,30 @@ def pack(
 def _emit_warnings(warnings: list[str]) -> None:
     for warning in warnings:
         click.echo(f"WARNING: {warning}", err=True)
+
+
+def _scan_file_contents(builder: BundleBuilder, files) -> list[SecretWarning]:
+    warnings: list[SecretWarning] = []
+    for file in files:
+        content = builder.read_file_content(file)
+        found = scan_for_secrets(content, file.rel_path.as_posix())
+        if found:
+            file.security_risk = True
+            file.security_warnings.extend(
+                f"line {warning.line_number}: possible {warning.secret_type}"
+                for warning in found
+            )
+            warnings.extend(found)
+    return warnings
+
+
+def _emit_secret_warnings(warnings: list[SecretWarning]) -> None:
+    for warning in warnings:
+        click.echo(
+            f"WARNING: [secret] {warning.filepath} line {warning.line_number}: "
+            f"possible {warning.secret_type} detected",
+            err=True,
+        )
 
 
 if __name__ == "__main__":
