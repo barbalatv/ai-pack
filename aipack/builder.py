@@ -185,7 +185,6 @@ class BundleBuilder:
         warnings: list[Any],
     ) -> str:
         root = Path(root).resolve()
-        files = self.sort_files(files)
         generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         file_sections: list[str] = []
 
@@ -221,8 +220,8 @@ class BundleBuilder:
 
     def build_xml(self, root, files, tree, strip_comments_flag, warnings) -> str:
         root = Path(root).resolve()
-        files = self.sort_files(files)
         generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        warnings_by_file = _warnings_by_file(warnings)
         file_entries = []
 
         for file in files:
@@ -230,8 +229,10 @@ class BundleBuilder:
             lang = self._language_for(file.rel_path)
             if strip_comments_flag:
                 content = self.strip_comments(content, lang)
-            line_count = len(content.splitlines())
-            file_entries.append((file, content, lang, line_count))
+            content = _redact_xml_secret_lines(
+                content, warnings_by_file.get(file.rel_path.as_posix(), [])
+            )
+            file_entries.append((file, content, lang))
 
         bundle = self._build_xml_with_token_count(
             root,
@@ -246,7 +247,6 @@ class BundleBuilder:
 
     def build_md(self, root, files, tree, strip_comments_flag, warnings) -> str:
         root = Path(root).resolve()
-        files = self.sort_files(files)
         generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         file_sections: list[str] = []
 
@@ -400,7 +400,7 @@ class BundleBuilder:
         files: list[ScannedFile],
         tree: str,
         generated_at: str,
-        file_entries: list[tuple[ScannedFile, str, str, int]],
+        file_entries: list[tuple[ScannedFile, str, str]],
         warnings: list[Any],
         token_count: str,
     ) -> str:
@@ -424,22 +424,15 @@ class BundleBuilder:
             lines.append("  <security_warnings>")
             for warning in warnings:
                 lines.append(
-                    (
-                        f'    <security_warning path="{escape(warning.filepath, quote=True)}" '
-                        f'line="{warning.line_number}" '
-                        f'type="{escape(warning.secret_type, quote=True)}">'
-                        f"{escape(warning.snippet)}</security_warning>"
-                    )
+                    f'    <security_warning path="{escape(warning.filepath, quote=True)}" '
+                    f'line="{warning.line_number}" '
+                    f'type="{escape(warning.secret_type, quote=True)}" />'
                 )
             lines.append("  </security_warnings>")
-        for file, content, lang, line_count in file_entries:
+        for file, content, lang in file_entries:
             lines.extend(
                 [
-                    (
-                        f'  <file path="{escape(file.rel_path.as_posix(), quote=True)}" '
-                        f'size_kb="{self._format_kb(file.size_bytes)}" '
-                        f'lines="{line_count}" lang="{escape(lang, quote=True)}">'
-                    ),
+                    f'  <file path="{escape(file.rel_path.as_posix(), quote=True)}" lang="{escape(lang, quote=True)}">',
                     "    <content>",
                     escape(content.rstrip("\n")),
                     "    </content>",
@@ -523,6 +516,7 @@ class BundleBuilder:
             "# pylint:",
             "# ruff:",
             "# pragma:",
+            "# fmt:",
         )
         return lowered.startswith(semantic_prefixes)
 
@@ -589,3 +583,25 @@ def _replace_last(text: str, old: str, new: str) -> str:
     if not separator:
         return text
     return before + new + after
+
+
+def _warnings_by_file(warnings: list[Any]) -> dict[str, list[Any]]:
+    grouped: dict[str, list[Any]] = {}
+    for warning in warnings:
+        grouped.setdefault(warning.filepath, []).append(warning)
+    return grouped
+
+
+def _redact_xml_secret_lines(content: str, warnings: list[Any]) -> str:
+    if not warnings:
+        return content
+
+    warnings_by_line = {warning.line_number: warning for warning in warnings}
+    lines = content.splitlines(keepends=True)
+    for index, line in enumerate(lines, start=1):
+        warning = warnings_by_line.get(index)
+        if warning is None:
+            continue
+        newline = "\n" if line.endswith("\n") else ""
+        lines[index - 1] = f"[REDACTED: possible {warning.secret_type}]{newline}"
+    return "".join(lines)

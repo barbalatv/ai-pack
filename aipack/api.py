@@ -33,6 +33,7 @@ class PackResult:
     warnings: list[str] = field(default_factory=list)
     secret_warnings: list[str] = field(default_factory=list)
     stats: dict = field(default_factory=dict)
+    file_token_map: dict[str, int] = field(default_factory=dict)
 
 
 def pack_project(
@@ -101,6 +102,11 @@ def pack_project(
         for warning in all_secret_warnings
     ]
 
+    file_token_map = {
+        file.rel_path.as_posix(): estimate_tokens(builder.read_file_content(file))
+        for file in files
+    }
+
     return PackResult(
         bundle=bundle,
         token_count=token_count,
@@ -116,5 +122,9 @@ def pack_project(
             "filtered_security": scan_stats.filtered_security_blacklist,
             "filtered_binary": scan_stats.filtered_binary,
             "filtered_diff": scan_stats.filtered_diff,
+            "filtered_user_exclude": scan_stats.filtered_user_exclude,
+            "filtered_user_include": scan_stats.filtered_user_include,
+            "filtered_errors": scan_stats.filtered_errors,
         },
+        file_token_map=file_token_map,
     )

@@ -82,8 +82,66 @@ class PackProjectApiTests(unittest.TestCase):
 
         result = pack_project(root)
 
-        self.assertIn("total_found", result.stats)
-        self.assertIn("filtered_gitignore", result.stats)
+        expected_keys = {
+            "total_found",
+            "filtered_hardcoded",
+            "filtered_gitignore",
+            "filtered_size",
+            "filtered_security",
+            "filtered_binary",
+            "filtered_diff",
+            "filtered_user_exclude",
+            "filtered_user_include",
+            "filtered_errors",
+        }
+        self.assertEqual(set(result.stats.keys()), expected_keys)
+
+    def test_user_exclude_reflected_in_stats(self) -> None:
+        root = self._make_project(
+            {
+                "src/main.py": "x = 1\n",
+                "tests/test_main.py": "assert True\n",
+            }
+        )
+
+        result = pack_project(root, exclude=["tests/*"])
+
+        self.assertEqual(result.stats["filtered_user_exclude"], 1)
+        self.assertEqual(result.files_included, 1)
+
+    def test_file_token_map(self) -> None:
+        root = self._make_project(
+            {
+                "main.py": "print('hello')\n",
+                "utils.py": "x = 1\n",
+            }
+        )
+
+        result = pack_project(root)
+
+        self.assertIn("main.py", result.file_token_map)
+        self.assertIn("utils.py", result.file_token_map)
+        self.assertTrue(all(v > 0 for v in result.file_token_map.values()))
+        self.assertGreaterEqual(
+            result.file_token_map["main.py"] + result.file_token_map["utils.py"],
+            2,
+        )
+
+    def test_secret_snippet_not_in_xml_bundle(self) -> None:
+        root = self._make_project(
+            {
+                "config.py": (
+                    'api_key = "sk-abcdefghijklmnopqrstuvwxyz012345678901234567"\n'
+                ),
+            }
+        )
+
+        result = pack_project(root, fmt="xml")
+
+        self.assertGreater(len(result.secret_warnings), 0)
+        self.assertNotIn("sk-abcdefghij", result.bundle)
+        self.assertIn("<security_warning ", result.bundle)
+        self.assertNotIn(">sk-", result.bundle)
 
     def test_no_tree(self) -> None:
         root = self._make_project({"main.py": "x = 1\n"})
