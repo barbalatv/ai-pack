@@ -11,6 +11,9 @@ from .security import SecretWarning, scan_files_for_secrets
 from .tree import generate_tree
 
 
+_FMT_EXT = {"xml": "xml", "md": "md", "plain": "txt"}
+
+
 @click.command()
 @click.argument("path", default=".", type=click.Path(exists=True))
 @click.option(
@@ -139,26 +142,37 @@ def pack(
     _emit_secret_warnings(secret_warnings)
 
     if chunk_size is not None:
-        if not output:
-            raise click.ClickException("--chunk-size requires --output as the chunk filename base")
         try:
-            chunks = builder.split_into_chunks(bundle, chunk_size, output)
+            output_base = output or f"{root.name}.{_FMT_EXT[fmt]}"
+            chunks = builder.split_into_chunks(bundle, chunk_size, output_base)
         except ValueError as exc:
             raise click.ClickException(str(exc)) from exc
-        for filename, content in chunks:
-            chunk_path = Path(filename)
+        for index, (filename, content) in enumerate(chunks, start=1):
+            if output:
+                chunk_path = Path(filename)
+            else:
+                chunk_path = Path.cwd() / fmt / f"{root.name}_{index:03d}.{_FMT_EXT[fmt]}"
             chunk_path.parent.mkdir(parents=True, exist_ok=True)
             chunk_path.write_text(content, encoding="utf-8")
-        click.echo(f"Wrote {len(chunks)} chunks using base {output}", err=True)
+            if not output:
+                click.echo(str(chunk_path), err=True)
+        if output:
+            click.echo(f"Wrote {len(chunks)} chunks using base {output}", err=True)
         return
 
     if output:
-        output_path = Path(output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(bundle, encoding="utf-8")
-        click.echo(f"Wrote {output_path} ({format_token_count(token_count)} tokens)", err=True)
+        out_path = Path(output)
     else:
-        click.echo(bundle, nl=False)
+        repo_name = root.name
+        ext = _FMT_EXT[fmt]
+        out_path = Path.cwd() / fmt / f"{repo_name}.{ext}"
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(bundle, encoding="utf-8")
+    if output:
+        click.echo(f"Wrote {out_path} ({format_token_count(token_count)} tokens)", err=True)
+    else:
+        click.echo(str(out_path), err=True)
 
 
 def _emit_warnings(warnings: list[str]) -> None:
