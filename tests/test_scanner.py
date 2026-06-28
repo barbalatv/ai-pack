@@ -64,6 +64,47 @@ class FileScannerTests(unittest.TestCase):
             self.assertEqual(self._rel_paths(files), ["text.py"])
             self.assertEqual(scanner.stats.filtered_binary, 1)
 
+    def test_symlink_file_is_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "project"
+            root.mkdir()
+            self._write(root / "real.py", "x = 1\n")
+
+            target = root.parent / "outside_secret.txt"
+            target.write_text("SECRET_KEY=hunter2\n", encoding="utf-8")
+            link = root / "local_secret.txt"
+            try:
+                link.symlink_to(target)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"Symlinks are not available: {exc}")
+
+            scanner = FileScanner(root, [], [], "500kb", None)
+            files = scanner.scan()
+
+            included_names = [file.rel_path.name for file in files]
+            self.assertNotIn("local_secret.txt", included_names)
+            self.assertIn("real.py", included_names)
+            self.assertGreater(scanner.stats.filtered_errors, 0)
+            self.assertTrue(
+                any("symlink" in warning.lower() for warning in scanner.stats.warnings)
+            )
+
+    def test_env_example_not_excluded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write(root / ".env", "SECRET_KEY=real_secret\n")
+            self._write(root / ".env.example", "SECRET_KEY=your_key_here\n")
+            self._write(root / ".env.template", "SECRET_KEY=your_key_here\n")
+            self._write(root / "main.py", "x = 1\n")
+
+            scanner = FileScanner(root, [], [], "500kb", None)
+            files = scanner.scan()
+
+            included_names = {file.rel_path.name for file in files}
+            self.assertIn(".env.example", included_names)
+            self.assertIn(".env.template", included_names)
+            self.assertNotIn(".env", included_names)
+
     def test_parse_max_size(self) -> None:
         self.assertEqual(FileScanner._parse_max_size("1kb"), 1024)
         self.assertEqual(FileScanner._parse_max_size("1.5kb"), 1536)

@@ -154,7 +154,10 @@ class FileScanner:
 
     SECURITY_BLACKLIST = [
         ".env",
-        ".env.*",
+        ".env.local",
+        ".env.development",
+        ".env.staging",
+        ".env.production",
         "*.env",
         "*.pem",
         "*.key",
@@ -300,6 +303,10 @@ class FileScanner:
             for filename in filenames:
                 abs_path = current_path / filename
                 self.stats.total_files_found += 1
+                if abs_path.is_symlink():
+                    self.stats.filtered_errors += 1
+                    self.stats.warnings.append(f"Skipped symlink: {filename}")
+                    continue
 
                 try:
                     rel_path = abs_path.relative_to(self.root)
