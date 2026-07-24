@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from .counter import estimate_tokens
 
@@ -32,6 +32,7 @@ def auto_shrink(
     skeletons_already: bool,
     *,
     redact: bool = False,
+    postprocess: Callable[[str], str] | None = None,
 ) -> tuple[str, ShrinkReport]:
     """Shrink a bundle in a fixed order while preserving visible omissions."""
     strip_comments = strip_comments_already
@@ -46,7 +47,7 @@ def auto_shrink(
         if rebuilds >= max_rebuilds:
             raise ValueError("Auto-shrink reached its defensive rebuild limit")
         rebuilds += 1
-        return _build_bundle(
+        built = _build_bundle(
             builder,
             root,
             files,
@@ -58,6 +59,7 @@ def auto_shrink(
             redact,
             omitted,
         )
+        return postprocess(built) if postprocess is not None else built
 
     bundle = rebuild()
     if _fits(bundle, max_tokens, report):
