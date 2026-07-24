@@ -183,16 +183,35 @@ class BundleBuilder:
         tree: str,
         strip_comments_flag: bool,
         warnings: list[Any],
+        *,
+        skeletonize: bool = False,
+        redact: bool = False,
+        omitted: dict[Path, str] | None = None,
     ) -> str:
         root = Path(root).resolve()
         generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         file_sections: list[str] = []
 
         for file in files:
-            content = self.read_file_content(file)
-            lang = self._language_for(file.rel_path)
-            if strip_comments_flag:
-                content = self.strip_comments(content, lang)
+            omission_reason = self._omission_reason(file, omitted)
+            if omission_reason is not None:
+                file_sections.append(
+                    "\n".join(
+                        [
+                            "=" * 64,
+                            f"FILE: {file.rel_path.as_posix()} [OMITTED - {omission_reason}]",
+                            "=" * 64,
+                            "",
+                        ]
+                    )
+                )
+                continue
+            content, lang = self._prepared_content(
+                file,
+                strip_comments_flag=strip_comments_flag,
+                skeletonize=skeletonize,
+                redact=redact,
+            )
             line_count = len(content.splitlines())
             file_sections.append(
                 "\n".join(
@@ -218,17 +237,34 @@ class BundleBuilder:
         )
         return _replace_plain_token_placeholder(bundle)
 
-    def build_xml(self, root, files, tree, strip_comments_flag, warnings) -> str:
+    def build_xml(
+        self,
+        root: Path,
+        files: list[ScannedFile],
+        tree: str,
+        strip_comments_flag: bool,
+        warnings: list[Any],
+        *,
+        skeletonize: bool = False,
+        redact: bool = False,
+        omitted: dict[Path, str] | None = None,
+    ) -> str:
         root = Path(root).resolve()
         generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        file_entries = []
+        file_entries: list[tuple[ScannedFile, str, str, str | None]] = []
 
         for file in files:
-            content = self.read_file_content(file)
-            lang = self._language_for(file.rel_path)
-            if strip_comments_flag:
-                content = self.strip_comments(content, lang)
-            file_entries.append((file, content, lang))
+            omission_reason = self._omission_reason(file, omitted)
+            if omission_reason is not None:
+                file_entries.append((file, "", self._language_for(file.rel_path), omission_reason))
+                continue
+            content, lang = self._prepared_content(
+                file,
+                strip_comments_flag=strip_comments_flag,
+                skeletonize=skeletonize,
+                redact=redact,
+            )
+            file_entries.append((file, content, lang, None))
 
         bundle = self._build_xml_with_token_count(
             root,
@@ -241,16 +277,41 @@ class BundleBuilder:
         )
         return _replace_xml_token_placeholder(bundle)
 
-    def build_md(self, root, files, tree, strip_comments_flag, warnings) -> str:
+    def build_md(
+        self,
+        root: Path,
+        files: list[ScannedFile],
+        tree: str,
+        strip_comments_flag: bool,
+        warnings: list[Any],
+        *,
+        skeletonize: bool = False,
+        redact: bool = False,
+        omitted: dict[Path, str] | None = None,
+    ) -> str:
         root = Path(root).resolve()
         generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         file_sections: list[str] = []
 
         for file in files:
-            content = self.read_file_content(file)
-            lang = self._language_for(file.rel_path)
-            if strip_comments_flag:
-                content = self.strip_comments(content, lang)
+            omission_reason = self._omission_reason(file, omitted)
+            if omission_reason is not None:
+                file_sections.append(
+                    "\n".join(
+                        [
+                            f"## {file.rel_path.as_posix()}",
+                            f"*[OMITTED - {omission_reason}]*",
+                            "",
+                        ]
+                    )
+                )
+                continue
+            content, lang = self._prepared_content(
+                file,
+                strip_comments_flag=strip_comments_flag,
+                skeletonize=skeletonize,
+                redact=redact,
+            )
             line_count = len(content.splitlines())
             fence = self._fence_for(content)
             file_sections.append(
@@ -396,7 +457,7 @@ class BundleBuilder:
         files: list[ScannedFile],
         tree: str,
         generated_at: str,
-        file_entries: list[tuple[ScannedFile, str, str]],
+        file_entries: list[tuple[ScannedFile, str, str, str | None]],
         warnings: list[Any],
         token_count: str,
     ) -> str:
@@ -425,7 +486,13 @@ class BundleBuilder:
                     f'type="{escape(warning.secret_type, quote=True)}" />'
                 )
             lines.append("  </security_warnings>")
-        for file, content, lang in file_entries:
+        for file, content, lang, omission_reason in file_entries:
+            if omission_reason is not None:
+                lines.append(
+                    f'  <file path="{escape(file.rel_path.as_posix(), quote=True)}" '
+                    f'omitted="true" reason="{escape(omission_reason, quote=True)}" />'
+                )
+                continue
             lines.extend(
                 [
                     f'  <file path="{escape(file.rel_path.as_posix(), quote=True)}" lang="{escape(lang, quote=True)}">',
@@ -483,6 +550,35 @@ class BundleBuilder:
                 if pattern in name or pattern == rel:
                     return priority
         return 3
+
+    def _prepared_content(
+        self,
+        file: ScannedFile,
+        *,
+        strip_comments_flag: bool,
+        skeletonize: bool,
+        redact: bool,
+    ) -> tuple[str, str]:
+        """Read a file and apply optional content transformations in stable order."""
+        content = self.read_file_content(file)
+        lang = self._language_for(file.rel_path)
+        if skeletonize and lang == "python":
+            from .pyast import skeletonize_python
+
+            content = skeletonize_python(content)
+        if redact:
+            from .security import redact_content
+
+            content, _ = redact_content(content)
+        if strip_comments_flag:
+            content = self.strip_comments(content, lang)
+        return content, lang
+
+    @staticmethod
+    def _omission_reason(file: ScannedFile, omitted: dict[Path, str] | None) -> str | None:
+        if not omitted:
+            return None
+        return omitted.get(file.abs_path) or omitted.get(file.abs_path.resolve())
 
     @staticmethod
     def _language_for(path: Path) -> str:
