@@ -192,6 +192,56 @@ class PackProjectApiTests(unittest.TestCase):
         )
         self.assertNotIn('estimated_tokens="__TOKEN_COUNT__"', xml.bundle)
 
+    def test_redact_reports_count_and_preserves_assignment_context(self) -> None:
+        secret = "a" * 24
+        root = self._make_project({"config.py": f'API_KEY = "{secret}"\n'})
+
+        result = pack_project(root, fmt="plain", redact=True)
+
+        self.assertEqual(result.redacted_count, 1)
+        self.assertIn('API_KEY = "[REDACTED]"', result.bundle)
+        self.assertNotIn(secret, result.bundle)
+
+    def test_skeletons_and_symbol_map(self) -> None:
+        root = self._make_project(
+            {
+                "app.py": (
+                    "class Service:\n"
+                    "    def run(self) -> str:\n"
+                    "        return 'implementation'\n"
+                )
+            }
+        )
+
+        result = pack_project(root, fmt="plain", skeletons=True, symbol_map=True)
+
+        self.assertIn("[PYTHON SYMBOL MAP]", result.bundle)
+        self.assertIn("class Service", result.bundle)
+        self.assertIn("def run(self) -> str", result.bundle)
+        self.assertNotIn("return 'implementation'", result.bundle)
+
+    def test_config_is_loaded_and_explicit_api_values_win(self) -> None:
+        root = self._make_project(
+            {
+                "aipack.toml": "[tool.aipack]\nfmt = 'md'\nskeletons = true\n",
+                "app.py": "def run():\n    return 'implementation'\n",
+            }
+        )
+
+        configured = pack_project(root)
+        overridden = pack_project(root, fmt="plain", skeletons=False)
+
+        self.assertIn("# Project Bundle", configured.bundle)
+        self.assertNotIn("return 'implementation'", configured.bundle)
+        self.assertIn("PROJECT BUNDLE", overridden.bundle)
+        self.assertIn("return 'implementation'", overridden.bundle)
+
+    def test_auto_shrink_requires_max_tokens(self) -> None:
+        root = self._make_project({"main.py": "x = 1\n"})
+
+        with self.assertRaisesRegex(ValueError, "--auto-shrink requires --max-tokens"):
+            pack_project(root, auto_shrink=True)
+
     def _make_project(self, files: dict[str, str]) -> Path:
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
