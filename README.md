@@ -36,4 +36,11 @@ ai-pack ./my-project --format xml --exclude "tests/*" --exclude "docs/*"
 ai-pack ./my-project --stats                  # dry-run: print filter counts only
 ai-pack ./my-project --diff HEAD~1            # only files changed since last commit
 ai-pack ./my-project --chunk-size 80000 -o out.txt  # split into chunked files
+ai-pack ./my-project --format xml --redact --symbol-map
+ai-pack ./my-project --preset review --format md
+ai-pack ./my-project --max-tokens 80000 --auto-shrink --skeletons
+ai-pack ./my-project --copy                   # requires: pip install "ai-pack[clipboard]"
 ```
+
+See [the Russian usage guide](docs/USAGE.ru.md) for the full CLI reference,
+project configuration, presets, redaction, skeletons, and auto-shrink behavior.
