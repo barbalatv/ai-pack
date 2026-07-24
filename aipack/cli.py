@@ -354,14 +354,16 @@ def _prepend_sections(bundle: str, fmt: str, sections: list[tuple[str, str, str]
         rendered = []
         for title, _tag, content in sections:
             rendered.extend([f"## {title.title()}", "```", content, "```", ""])
-        return f"{header}\n\n{'\n'.join(rendered)}\n{remainder}"
+        rendered_text = "\n".join(rendered)
+        return f"{header}\n\n{rendered_text}\n{remainder}"
     header, separator, remainder = bundle.partition("\n\n")
     if not separator:
         return bundle
     rendered = []
     for title, _tag, content in sections:
         rendered.extend([f"[{title}]", content, ""])
-    return f"{header}\n\n{'\n'.join(rendered)}\n{remainder}"
+    rendered_text = "\n".join(rendered)
+    return f"{header}\n\n{rendered_text}\n{remainder}"
 
 
 def _skeleton_savings(builder: BundleBuilder, files: list[ScannedFile]) -> int:
