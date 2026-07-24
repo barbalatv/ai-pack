@@ -1,6 +1,6 @@
 [project]
 name = "ai-pack"
-version = "0.3.2"
+version = "0.4.0"
 description = "Bundle source code into a single file for LLM consumption"
 requires-python = ">=3.10"
 dependencies = [
@@ -9,7 +9,11 @@ dependencies = [
     "pathspec>=0.12",
     "tiktoken>=0.7",
     "chardet>=5.0",
+    "tomli>=2.0; python_version<'3.11'",
 ]
+
+[project.optional-dependencies]
+clipboard = ["pyperclip>=1.8"]
 
 [project.scripts]
 ai-pack = "aipack.cli:pack"

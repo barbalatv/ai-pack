@@ -3,4 +3,4 @@
 from .api import PackResult, pack_project
 
 __all__ = ["pack_project", "PackResult"]
-__version__ = "0.3.2"
+__version__ = "0.4.0"
