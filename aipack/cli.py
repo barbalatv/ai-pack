@@ -10,7 +10,7 @@ import click
 from click.core import ParameterSource
 
 from . import clipboard
-from .builder import BundleBuilder
+from .builder import BundleBuilder, refresh_token_count
 from .config import DEFAULTS, PRESETS, load_config_file, merge_settings
 from .counter import estimate_tokens, format_token_count
 from .i18n import resolve_lang, t
@@ -164,7 +164,7 @@ def pack(
         redact=bool(settings["redact"]),
     )
     if postprocess is not None:
-        bundle = postprocess(bundle)
+        bundle = refresh_token_count(postprocess(bundle), fmt)
 
     token_count = estimate_tokens(bundle)
     shrink_report = None

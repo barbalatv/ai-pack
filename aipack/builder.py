@@ -679,3 +679,40 @@ def _replace_last(text: str, old: str, new: str) -> str:
     if not separator:
         return text
     return before + new + after
+
+
+def refresh_token_count(bundle: str, fmt: str) -> str:
+    """Refresh metadata token counts after a caller prepends extra sections."""
+    formatted = _format_token_count(_estimate_tokens(bundle))
+    if fmt == "xml":
+        first_line, separator, remainder = bundle.partition("\n")
+        if not separator:
+            return bundle
+        first_line = re.sub(
+            r'estimated_tokens="[^"]*"',
+            f'estimated_tokens="{formatted}"',
+            first_line,
+            count=1,
+        )
+        return first_line + separator + remainder
+
+    lines = bundle.splitlines(keepends=True)
+    if fmt == "md":
+        header_pattern = r"(\| Files: \d+ \| )[^ ]+( tokens)"
+        footer_pattern = r"(End of bundle: \d+ files \| )[^ ]+( tokens)"
+    else:
+        header_pattern = r"(Files: \d+ \| Estimated tokens: )[^ ]+( \(cl100k_base\))"
+        footer_pattern = r"(END OF BUNDLE \| \d+ files \| )[^ ]+( tokens)"
+
+    for index, line in enumerate(lines[:6]):
+        updated = re.sub(header_pattern, rf"\g<1>{formatted}\g<2>", line, count=1)
+        if updated != line:
+            lines[index] = updated
+            break
+    for index in range(len(lines) - 1, max(-1, len(lines) - 7), -1):
+        line = lines[index]
+        updated = re.sub(footer_pattern, rf"\g<1>{formatted}\g<2>", line, count=1)
+        if updated != line:
+            lines[index] = updated
+            break
+    return "".join(lines)

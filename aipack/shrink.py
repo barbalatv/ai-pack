@@ -59,7 +59,11 @@ def auto_shrink(
             redact,
             omitted,
         )
-        return postprocess(built) if postprocess is not None else built
+        if postprocess is None:
+            return built
+        from .builder import refresh_token_count
+
+        return refresh_token_count(postprocess(built), fmt)
 
     bundle = rebuild()
     if _fits(bundle, max_tokens, report):

@@ -58,6 +58,14 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(count, 1)
         self.assertEqual(redacted, "Authorization: Bearer [REDACTED]\n")
 
+    def test_whole_match_token_redaction_hides_token_prefix(self) -> None:
+        token = "sk-" + ("x" * 48)
+
+        redacted, count = redact_content(f'token = "{token}"\n')
+
+        self.assertEqual(count, 1)
+        self.assertEqual(redacted, 'token = "[REDACTED]"\n')
+
 
 if __name__ == "__main__":
     unittest.main()

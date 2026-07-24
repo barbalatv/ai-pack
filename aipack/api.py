@@ -7,7 +7,7 @@ from html import escape
 from pathlib import Path
 from typing import Any, Callable
 
-from .builder import BundleBuilder
+from .builder import BundleBuilder, refresh_token_count
 from .config import DEFAULTS, load_config_file, merge_settings
 from .counter import estimate_tokens
 from .pyast import extract_python_structure, render_symbol_map, skeletonize_python
@@ -113,7 +113,7 @@ def pack_project(
         redact=bool(settings["redact"]),
     )
     if postprocess is not None:
-        bundle = postprocess(bundle)
+        bundle = refresh_token_count(postprocess(bundle), settings["fmt"])
 
     shrink_report = ShrinkReport(final_token_count=estimate_tokens(bundle))
     if settings["max_tokens"] is not None and shrink_report.final_token_count > settings["max_tokens"]:
