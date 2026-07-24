@@ -5,14 +5,16 @@ def estimate_tokens(text: str) -> int:
     """
     Estimate token count using tiktoken cl100k_base.
 
-    Falls back to a character-based heuristic when tiktoken is unavailable.
+    Falls back to a character-based heuristic when tiktoken is unavailable
+    for any reason, including network or cache failures while loading its
+    encoding data.
     """
     try:
         import tiktoken
 
         enc = tiktoken.get_encoding("cl100k_base")
         return len(enc.encode(text))
-    except ImportError:
+    except Exception:
         return max(1, len(text) // 4)
 
 
