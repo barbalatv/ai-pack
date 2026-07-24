@@ -5,7 +5,7 @@ import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 try:
     import pathspec
@@ -187,6 +187,7 @@ class FileScanner:
         include_only: list[str] | tuple[str, ...] | None,
         max_file_size: int | str,
         diff_ref: str | None,
+        progress_callback: Callable[[int], None] | None = None,
     ):
         self.root = Path(root).resolve()
         self.extra_exclude = [self._normalize_pattern(p) for p in (extra_exclude or [])]
@@ -197,6 +198,7 @@ class FileScanner:
             else max_file_size
         )
         self.diff_ref = diff_ref
+        self.progress_callback = progress_callback
         self.gitignore_cache: dict[Path, object | None] = {}
         self.stats = ScanStats()
 
@@ -303,6 +305,11 @@ class FileScanner:
             for filename in filenames:
                 abs_path = current_path / filename
                 self.stats.total_files_found += 1
+                if self.progress_callback is not None:
+                    try:
+                        self.progress_callback(self.stats.total_files_found)
+                    except Exception:
+                        pass
                 if abs_path.is_symlink():
                     self.stats.filtered_errors += 1
                     self.stats.warnings.append(f"Skipped symlink: {filename}")
