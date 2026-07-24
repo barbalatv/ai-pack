@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import locale
 import os
+import warnings
 
 
 SUPPORTED_LANGS = ("en", "ru")
@@ -74,7 +75,9 @@ def resolve_lang(explicit: str | None = None) -> str:
     if env in SUPPORTED_LANGS:
         return env
     try:
-        system_locale = locale.getdefaultlocale()[0] or ""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            system_locale = locale.getdefaultlocale()[0] or ""
     except (ValueError, TypeError):
         system_locale = ""
     return "ru" if system_locale.lower().startswith("ru") else "en"
