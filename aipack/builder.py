@@ -199,7 +199,7 @@ class BundleBuilder:
                     "\n".join(
                         [
                             "=" * 64,
-                            f"FILE: {file.rel_path.as_posix()} [OMITTED - {omission_reason}]",
+                            f"FILE: {file.rel_path.as_posix()} [OMITTED - {self._omission_label(omission_reason)}]",
                             "=" * 64,
                             "",
                         ]
@@ -300,7 +300,7 @@ class BundleBuilder:
                     "\n".join(
                         [
                             f"## {file.rel_path.as_posix()}",
-                            f"*[OMITTED - {omission_reason}]*",
+                            f"*[OMITTED - {self._omission_label(omission_reason)}]*",
                             "",
                         ]
                     )
@@ -579,6 +579,10 @@ class BundleBuilder:
         if not omitted:
             return None
         return omitted.get(file.abs_path) or omitted.get(file.abs_path.resolve())
+
+    @staticmethod
+    def _omission_label(reason: str) -> str:
+        return "auto-shrink: token budget" if reason == "auto-shrink" else reason
 
     @staticmethod
     def _language_for(path: Path) -> str:
