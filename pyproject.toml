@@ -3,6 +3,8 @@ name = "ai-pack"
 version = "0.4.0"
 description = "Bundle source code into a single file for LLM consumption"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "click>=8.0",
     "rich>=13.0",
@@ -19,7 +21,7 @@ clipboard = ["pyperclip>=1.8"]
 ai-pack = "aipack.cli:pack"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

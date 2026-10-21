@@ -176,3 +176,7 @@ imported without accessing a real clipboard. CI does not publish packages.
   context; review omission markers before relying on the result.
 - Git failures are reported as warnings and can yield an empty selection. Check
   warnings and included-file counts when using `--diff` or the review preset.
+
+## License
+
+[MIT](LICENSE) - Copyright (c) 2026 Vladimir Barbalat.
