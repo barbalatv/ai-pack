@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install from source in a clean environment
+        run: |
+          python -m venv "$RUNNER_TEMP/source-env"
+          "$RUNNER_TEMP/source-env/bin/python" -m pip install build .
+          "$RUNNER_TEMP/source-env/bin/python" -m pip check
+
+      - name: Run existing unit tests
+        run: '"$RUNNER_TEMP/source-env/bin/python" -m unittest discover -s tests -q'
+
+      - name: Smoke-test installed source outside checkout
+        working-directory: ${{ runner.temp }}
+        run: '"$RUNNER_TEMP/source-env/bin/python" -I "$GITHUB_WORKSPACE/tests/smoke_installed.py"'
+
+      - name: Build sdist and wheel
+        run: '"$RUNNER_TEMP/source-env/bin/python" -m build --outdir "$RUNNER_TEMP/dist"'
+
+      - name: Smoke-test wheel and sdist in separate clean environments
+        run: |
+          for artifact in "$RUNNER_TEMP/dist/"*.whl "$RUNNER_TEMP/dist/"*.tar.gz; do
+            artifact_env="$RUNNER_TEMP/install-$(basename "$artifact")"
+            python -m venv "$artifact_env"
+            "$artifact_env/bin/python" -m pip install "$artifact"
+            "$artifact_env/bin/python" -m pip check
+            (cd "$RUNNER_TEMP" && "$artifact_env/bin/python" -I "$GITHUB_WORKSPACE/tests/smoke_installed.py")
+          done
+
+      - name: Verify clipboard extra without accessing a clipboard
+        run: |
+          "$RUNNER_TEMP/source-env/bin/python" -m pip install ".[clipboard]"
+          "$RUNNER_TEMP/source-env/bin/python" -I -c "import pyperclip"
+          "$RUNNER_TEMP/source-env/bin/python" -m pip check
